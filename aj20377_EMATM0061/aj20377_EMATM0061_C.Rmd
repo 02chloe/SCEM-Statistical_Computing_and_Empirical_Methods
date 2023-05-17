@@ -1,0 +1,208 @@
+---
+title: "Section-C"
+author: "aj20377"
+output: html_document
+---
+### K-nearest neighbour regression
+
+- K-nearest neighbour (KNN) regression is a non-parametric method that, in an intuitive manner, approximates the association between independent variables and the continuous outcome by averaging the observations in the same neighbourhood. The size of the neighbourhood needs to be set by the analyst or can be chosen using cross-validation (we will see this later) to select the size that minimises the mean-squared error.
+- The KNN algorithm uses ' feature similarity ' to predict the values of any new data points. This means that the new point is assigned a value based on how closely it resembles the points in the training set. 
+- First, the distance between the new point and each training point is calculated. Then the closest k data points are selected (based on the distance). The average of these data points is the final prediction for the new point.
+- While the method is quite appealing, it quickly becomes impractical when the dimension increases, i.e., when there are many independent variables.
+
+
+### Medical Cost Personal Datasets
+
+#### Columns
+- age: age of primary beneficiary
+- sex: insurance contractor gender, female, male
+- bmi: Body mass index, providing an understanding of body, weights that are relatively high or low relative to height,
+objective index of body weight (kg / m ^ 2) using the ratio of height to weight, ideally 18.5 to 24.9
+- children: Number of children covered by health insurance / Number of dependents
+- smoker: Smoking
+- region: the beneficiary's residential area in the US, northeast, southeast, southwest, northwest.
+- charges: Individual medical costs billed by health insurance
+
+```{r}
+library(magrittr)
+library(plyr)
+library(dplyr)
+data<-read.csv("insurance.csv",header=T)
+print(dim(data))
+head(data)
+```
+### Evaluation
+I use Mean Squared Error, or MSE for short,to evaluate the performance of the model in the experiments. Which is a popular error metric for regression problems. It is also an important loss function for algorithms fit or optimized using the least squares framing of a regression problem. The “ least squares ” refers to minimizing the mean squared error between predictions and expected values. The MSE is calculated as the mean or average of the squared differences between predicted and expected target values in a dataset. The squaring has the effect of inflating or magnifying large errors. That is, the larger the difference between the predicted and expected values, the larger the resulting squared positive error.
+
+### Explore how to choose hyperparameter "k" and cross validation
+
+- Split the data into a test sample and a train/validation sample.
+- Generate a function extract split the train/validation data into train and validation by fold. 
+
+```{r}
+num_total<-data %>% nrow()
+num_test<-ceiling(0.25*num_total)
+
+set.seed(5)
+data<-data %>% sample_n(size=nrow(.))
+test_inds<-seq(num_total-num_test+1,num_total)
+
+test_data<-data %>% filter(row_number() %in% test_inds)
+train_validation_data<-data %>% filter(!row_number() %in% test_inds)
+
+print(dim(test_data))
+print(dim(train_validation_data))
+
+train_validation_by_fold <- function(train_and_validation_data, fold, num_folds){
+  num_train_and_validate<-train_and_validation_data %>% nrow()
+  num_per_fold<-ceiling(num_train_and_validate/num_folds)
+  
+  fold_start<-(fold-1)*num_per_fold+1
+  fold_end<-min(fold*num_per_fold,num_train_and_validate)
+  fold_indicies<-seq(fold_start,fold_end)
+  
+  validation_data<-train_and_validation_data %>% filter(row_number() %in% fold_indicies)
+  train_data<-train_and_validation_data %>% filter(!row_number() %in% fold_indicies)
+  return(list(train=train_data, validation=validation_data))
+}
+```
+
+- Create a function to estimate validation error by fold and number of neighbours k. 
+
+```{r}
+library(kknn)
+knn_validation_error_by_fold<-function(train_and_validation_data, fold, num_folds, y_name, k){
+  
+  data_split<-train_validation_by_fold(train_and_validation_data, fold, num_folds)
+  train_data<-data_split$train
+  validation_data<-data_split$validation
+  
+  knn_formula<-paste0(y_name,"~.")
+  knn_model<-train.kknn(knn_formula, data=train_data, ks=k, distance=2, kernel="rectangular")
+  
+  knn_pred_val_y<-predict(knn_model, validation_data %>% select(-!!sym(y_name)))
+  val_y<-validation_data %>% pull(!!sym(y_name))
+  
+  val_msq_error<-mean((knn_pred_val_y - val_y)^2)
+}
+
+```
+
+- Specify a number of folds and a selection of possible numbers of neighbours. 
+- Compute the validation error for each possible choice of hyper-parameter and each fold. 
+- Find the hyper-parameter which minimizes the validation error. 
+
+```{r}
+num_folds<-10
+ks<-seq(1,30,1)
+
+library(purrr)
+cross_val_results<-cross_df(list(k=ks, fold=seq(num_folds))) %>%
+  mutate(val_error=map2_dbl(k, fold, 
+                            ~knn_validation_error_by_fold(train_validation_data, 
+                                                          .y, num_folds, "charges", .x))) %>%
+  group_by(k) %>%
+  summarise(val_error=mean(val_error))
+print(cross_val_results)
+
+min_val_error<-cross_val_results %>% 
+  pull(val_error) %>% 
+  min()
+
+optimal_k<-cross_val_results %>%
+  filter(val_error==min_val_error) %>%
+  pull(k)
+
+print(optimal_k)
+```
+
+- Retrain the model with the optimal hyper-parameter using the combined train & validation data. 
+- Make predictions and compute the test error.
+
+```{r}
+optimised_knn_model<-train.kknn(charges~. ,data=train_validation_data, ks=optimal_k, distance=2, kernel="rectangular")
+
+knn_pred_test_y<-predict(optimised_knn_model, test_data %>% select(-charges))
+test_y<-test_data %>% pull(charges)
+test_msq_error<-mean((knn_pred_test_y - test_y)^2)
+print(test_msq_error)
+```
+
+- Function of the process of selecting the optimal hyper-parameter by cross validation.
+
+```{r}
+get_optimal_k_by_cv<-function(train_and_validation_data, num_folds, y_name, ks){
+  folds<-seq(num_folds)
+  cross_val_results<-cross_df(list(k=ks, fold=folds)) %>%
+    mutate(val_error=map2_dbl(k, fold, 
+                              ~knn_validation_error_by_fold(train_and_validation_data,
+                                                            .y, num_folds, y_name, .x))) %>%
+    group_by(k) %>% summarise(val_error=mean(val_error))
+  
+  min_val_error<-cross_val_results %>% pull(val_error) %>% min()
+  optimal_k<-cross_val_results %>% filter(val_error==min_val_error) %>% pull(k)
+  
+  return(optimal_k)
+}
+
+opti=get_optimal_k_by_cv(train_validation_data, num_folds=10 , "charges", ks=seq(1,30,1))
+print(opti)
+```
+
+```{r}
+train_test_by_fold<-function(data, fold, num_folds){
+  num_total<- data %>% nrow()
+  num_per_fold<-ceiling(num_total/num_folds)
+  
+  fold_start<-(fold-1)*num_per_fold+1
+  fold_end<-min(fold*num_per_fold, num_total)
+  
+  fold_indicies<-seq(fold_start, fold_end)
+  
+  test_data<-data %>% filter(row_number() %in% fold_indicies)
+  train_and_val_data<-data %>% filter(!row_number() %in% fold_indicies)
+  
+  return(list(train_and_val=train_and_val_data, test=test_data))
+}
+```
+- A function for estimating the test error of the knn with a validation optimised choice of k.
+```{r}
+knn_test_error_by_fold<-function(data, fold, num_folds_test, num_folds_val, y_name, ks){
+  data_split<-train_test_by_fold(data, fold, num_folds_test)
+  train_and_validation_data<-data_split$train_and_val
+  test_data<-data_split$test
+  
+  optimal_k<-get_optimal_k_by_cv(train_validation_data, num_folds_val, y_name, ks)
+  knn_formula<-paste0(y_name, "~.")
+  optimised_knn_model<-train.kknn(knn_formula, data=train_and_validation_data,
+                                  ks=optimal_k,
+                                  distance=2,
+                                  kernel="rectangular")
+  knn_pred_test_y<-predict(optimised_knn_model, test_data %>% select(-!!sym(y_name)))
+  test_y<-test_data %>% pull(!!sym(y_name))
+  test_msq_error<-mean((knn_pred_test_y-test_y)^2)
+}
+```
+
+- Estimate the out-of-sample error based on validation optimised knn. 
+
+```{r}
+knn_test_error<-function(data, num_folds_test, num_folds_val, y_name, ks){
+  data<-data %>% sample_n(nrow(.))
+  folds<-seq(num_folds_test)
+  
+  mean_test_error<-data.frame(fold=folds) %>%
+    mutate(test_error=map_dbl(fold, 
+                              ~knn_test_error_by_fold(data,
+                                                  .x,
+                                                  num_folds_test,
+                                                  num_folds_val, 
+                                                  y_name, 
+                                                  ks))) %>%
+    pull(test_error) %>%
+    mean()
+  return(mean_test_error)
+}
+
+knn_test_error(data, num_folds_test=8, num_folds_val=5, y_name="charges", ks=seq(30))
+```

@@ -1,0 +1,100 @@
+---
+title: "Section-B"
+author: "aj20377"
+output: html_document
+---
+### Statistical hypothesis testing: a paired t-test
+#### Description of the hypothesis test 
+- Test statistic
+
+A test statistic is some function of the data used within a statistical hypothesis test. The test statistic must have a known distribution under the null hypothesis. In addition, the test statistic should emphasize differences between null and alternative hypothesis. For example, a t-test is a statistical test that is used to compare the means of two groups. It is often used in hypothesis testing to determine whether a process or treatment actually has an effect on the population of interest, or whether two groups are different from one another. When we try to explore the pod length of two peas in the same growing environment. Wou can test the difference between these two groups using a t-test. The null hypothesis is that the true difference between these group means is zero. The alternate hypothesis is that the true difference is different from zero.
+
+- Statistical hypothesis: 
+
+A statistical hypothesis is a reformulation of a research question into the parameters of a statistical model.
+
+- Null hypothesis: 
+
+The null hypothesis is our default position in a statistical hypothesis which typically declares the absence of some interesting phenomenon for example the equality of two statistical parameters.
+
+- Alternative hypothesis: 
+
+The alternative hypothesis is a statistical hypothesis which contradicts the null hypothesis and typically declares the presence of some interesting phenomenon, often consistent with the research hypothesis a scientist is attempting to prove. For example, a difference in the values of two statistical parameters.
+
+#### Experiment design and Apply "sleep" dataset on paired t test.
+
+- Dataset:
+
+The reasonable data sets for paired t test have three situation:
+1.The two homogenous samples were subjected to two different treatments, such as gender, age, weight, and condition of the same condition.
+2.The same sample or two parts of the same sample receive two different treatments respectively.
+3.The same sample is compared by itself, and the results of the same group of samples before and after processing are compared.
+
+I use the data set called "sleep", which is a small scale data set and suitable for paired t test. Since it shows different effects on sleeping time after using two different drugs on the patients.  I show the "sleep" data set below. 
+
+The data set records comparative data on the effects of two hypnotic drugs used by 10 patients contains 3 columns and 10 rows. The "ID" column records the patients ID. The "Group1" column records the change of sleep time after using the first type of drug, and the "Group2" column records the change of sleep time after using the second type of drug.
+
+```{r}
+Sleep<-read.csv("SLEEP.csv",header=T)
+print(dim(Sleep))
+Sleep
+```
+
+- To see if the assumption of an approximately Gaussian distribution is reasonable we create a kernel density plot and a quantile-quantile plot. And the results show that the data set is an approximately Gaussian distribution. 
+```{r}
+library(magrittr)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+Sleep%>%
+  mutate(diff=Group1-Group2)%>%
+  ggplot(aes(x=diff))+geom_density()+theme_bw()+labs(x="Differences ",y="Density")
+```
+```{r}
+Sleep%>%
+  mutate(diff=Group1-Group2)%>%
+  ggplot(aes(sample=diff))+theme_bw()+
+  stat_qq()+stat_qq_line(color="blue")+
+  labs(x="Theoretical", y="Sample")
+```
+
+- Carry out a paired t-test to determine whether there is a difference in average effect on sleep time between the drug 1 and drug 2. 
+
+- Use a significance level of 0.01. Divide into 2 groups by "group" to form a paired data set. H0 (Null hypothesis): There is no significant difference in the mean of the two sample groups "Group1" and "Group2", and the effect on the treatment of sleep is the same. 
+
+- According to the result: p-value=0.002833 < 0.01, which means H0 is not correct and the effects of drug1 and drug2 are different. 
+
+```{r}
+t.test(x=Sleep$Group1,y=Sleep$Group2,paired=TRUE)
+```
+
+- Compute the effect size using Cohen’s d statistics. Cohen suggested the following guidelines for interpreting effect size with Cohen’s d statistic: Below 0.2  - small effect;	Around 0.5 – medium effect;	Larger than 0.8 – A large effect. 
+
+- Drug1's Cohen’s d statistics = 0.4192264, which means medium effect. And drug2's Cohen’s d statistics = 1.163692 > 0.8, which means large effect.
+
+```{r}
+diffs1<-Sleep%>%
+  mutate(diff1=Group1)%>%
+  pull(diff1)
+
+diffs2<-Sleep%>%
+  mutate(diff2=Group2)%>%
+  pull(diff2)
+
+cohens_d1<-mean(diffs1)/sd(diffs1)
+cohens_d2<-mean(diffs2)/sd(diffs2)
+
+print(cohens_d1)
+print(cohens_d2)
+```
+#### Conclusion: 
+
+- After using the paired t test, I got p-value = 0.002833, t = -4.0621, cohens_d1 = 0.4192264, cohens_d2 = 1.163692. The drug 1 and drug 2 make different effect on sleepping time. Drug 1 makes medium effect and drug 2 makes huge effect. 
+
+- The structure of data set can get paired datas automaticlly, which is perdect structure for paired t test. And the data also pass the Gaussian distribution check. 
+
+```{r}
+boxplot(extra~group,data=sleep)
+```
+
+- I can also try to explore the data set by using unpaired t test and regard the samples as independent. Besides, I can also use the one sample t test if I ignore the difference of drugs.

@@ -1,0 +1,66 @@
+---
+title: "Section_A"
+output: html_document
+---
+### Task A
+#### A.1
+```{r}
+# read csv file
+business_dynamics <- read.csv("business_dynamics.csv")
+business_dynamics_data_original<-data.frame(business_dynamics)
+# Show the shape of "business_dynamics_data_original"(Rows&Columns)
+dim(business_dynamics_data_original) 
+```
+#### A.2
+```{r}
+library(magrittr)
+library(plyr)
+library(dplyr)
+business_dynamics_data <- business_dynamics_data_original %>%
+	select(State, Year, Data.Number.of.Firms, Data.Job.Creation.Count, Data.Job.Destruction.Count) %>%
+  rename(state=State, year=Year, num_firms=Data.Number.of.Firms, job_creation=Data.Job.Creation.Count, job_destruction=Data.Job.Destruction.Count) 
+head(business_dynamics_data,4)
+```
+#### A.3
+```{r}
+business_analytics<-business_dynamics_data %>%
+  mutate(net_job_creation=job_creation-job_destruction)
+head(business_analytics,3)
+```
+#### A.4
+```{r}
+top_five_net_creators <- business_analytics %>%
+  filter(year==2000) %>%
+  select(state, net_job_creation) %>%
+  arrange(desc(net_job_creation)) %>%
+  head(5)
+top_five_net_creators
+```
+#### A.5
+```{r}
+business_analytics <- business_analytics %>%
+  mutate(decade=year%/%10*10) %>%
+  mutate(job_creation_per_num_firms=net_job_creation/num_firms)
+print(dim(business_analytics))
+
+business_analytics %>%
+  select(state, decade,job_creation_per_num_firms) %>%
+  head(6)
+```
+#### A.6
+```{r}
+california_summary <- business_analytics %>%
+  filter(state=="California") %>%
+  group_by(decade) %>%
+  summarize(
+    num_rows = n(),
+    njc_mn = mean(net_job_creation),
+    njc_md = median(net_job_creation),
+    njc_sd = sd(net_job_creation),
+    nf_mn = mean(num_firms),
+    nf_md = median(num_firms),
+    nf_sd = sd(num_firms)
+    ) %>%
+  select(-num_rows)
+california_summary
+```
